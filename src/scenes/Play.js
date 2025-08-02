@@ -27,18 +27,37 @@ class Play extends Phaser.Scene {
 
     const layers = this.createLayers(map);
     const playerZones = this.getPlayerZones(layers.playerZones);
-    const player = this.createPlayer(playerZones.start);
+    const player1 = this.createPlayer(playerZones.start);
+    // Player 2: WASD controls
+    const wasd = this.input.keyboard.addKeys({
+      up: Phaser.Input.Keyboard.KeyCodes.W,
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      down: Phaser.Input.Keyboard.KeyCodes.S,
+      right: Phaser.Input.Keyboard.KeyCodes.D
+    });
+    // Offset player2's start position so they don't overlap
+    const player2Start = { x: playerZones.start.x + 50, y: playerZones.start.y };
+    const player2 = this.createPlayer(player2Start, wasd);
     const enemies = this.createEnemies(layers.enemySpawns, layers.platformsColliders);
     const collectables = this.createCollectables(layers.collectables);
 
     this.createEnemyColliders(enemies, {
       colliders: {
         platformsColliders: layers.platformsColliders,
-        player
+        player1,
+        player2
       }
     });
 
-    this.createPlayerColliders(player, {
+    this.createPlayerColliders(player1, {
+      colliders: {
+        platformsColliders: layers.platformsColliders,
+        projectiles: enemies.getProjectiles(),
+        collectables,
+        traps: layers.traps
+      }
+    });
+    this.createPlayerColliders(player2, {
       colliders: {
         platformsColliders: layers.platformsColliders,
         projectiles: enemies.getProjectiles(),
@@ -49,8 +68,8 @@ class Play extends Phaser.Scene {
 
     this.createBG(map);
     this.createBackButton();
-    this.createEndOfLevel(playerZones.end, player);
-    this.setupFollowupCameraOn(player);
+    this.createEndOfLevel(playerZones.end, player1);
+    this.setupFollowupCameraOn(player1);
 
     if (gameStatus === 'PLAYER_LOOSE') { return; }
 
@@ -140,8 +159,8 @@ class Play extends Phaser.Scene {
     return collectables;
   }
 
-  createPlayer(start) {
-    return new Player(this, start.x, start.y);
+  createPlayer(start, controls) {
+    return new Player(this, start.x, start.y, controls);
   }
 
   createEnemies(spawnLayer, platformsColliders) {
@@ -158,8 +177,8 @@ class Play extends Phaser.Scene {
     return enemies;
   }
 
-  onPlayerCollision(enemy, player) {
-    player.takesHit(enemy);
+  onPlayerCollision(enemy, player1) {
+    player1.takesHit(enemy);
   }
 
   onHit(entity, source) {
@@ -176,24 +195,51 @@ class Play extends Phaser.Scene {
   createEnemyColliders(enemies, { colliders }) {
     enemies
       .addCollider(colliders.platformsColliders)
-      .addCollider(colliders.player, this.onPlayerCollision)
-      .addCollider(colliders.player.projectiles, this.onHit)
-      .addOverlap(colliders.player.meleeWeapon, this.onHit)
+      .addCollider(colliders.player1, this.onPlayerCollision)
+      .addCollider(colliders.player1.projectiles, this.onHit)
+      .addOverlap(colliders.player1.meleeWeapon, this.onHit)
+    // Add colliders for player2 if present
+    if (colliders.player2) {
+      enemies
+        .addCollider(colliders.player2, this.onPlayerCollision)
+        .addCollider(colliders.player2.projectiles, this.onHit)
+        .addOverlap(colliders.player2.meleeWeapon, this.onHit);
+    }
   }
 
-  createPlayerColliders(player, { colliders }) {
-    player
+  createPlayerColliders(player1, { colliders }) {
+    player1
       .addCollider(colliders.platformsColliders)
       .addCollider(colliders.projectiles, this.onHit)
       .addCollider(colliders.traps, this.onHit)
       .addOverlap(colliders.collectables, this.onCollect, this)
   }
 
-  setupFollowupCameraOn(player) {
+  createPlayer2Colliders(player2, { colliders }) {
+    player2
+      .addCollider(colliders.platformsColliders)
+      .addCollider(colliders.projectiles, this.onHit)
+      .addCollider(colliders.traps, this.onHit)
+      .addOverlap(colliders.collectables, this.onCollect, this)
+    // Add colliders for player2
+    this.createPlayerColliders(player2, {
+      colliders: {
+        platformsColliders: layers.platformsColliders,
+        projectiles: enemies.getProjectiles(),
+        collectables,
+        traps: layers.traps
+      }
+    });
+
+    // Add end of level for player2
+    this.createEndOfLevel(playerZones.end, player2);
+  }
+
+  setupFollowupCameraOn(player1) {
     const { height, width, mapOffset, zoomFactor } = this.config;
     this.physics.world.setBounds(0, 0, width + mapOffset, height + 200);
     this.cameras.main.setBounds(0, 0, width + mapOffset, height).setZoom(zoomFactor);
-    this.cameras.main.startFollow(player);
+    this.cameras.main.startFollow(player1);
   }
 
   getPlayerZones(playerZonesLayer) {
@@ -208,13 +254,13 @@ class Play extends Phaser.Scene {
     return this.registry.get('level') || 1;
   }
 
-  createEndOfLevel(end, player) {
+  createEndOfLevel(end, player1) {
     const endOfLevel = this.physics.add.sprite(end.x, end.y, 'end')
       .setAlpha(0)
       .setSize(5, this.config.height)
       .setOrigin(0.5, 1);
 
-    const eolOverlap = this.physics.add.overlap(player, endOfLevel, () => {
+    const eolOverlap = this.physics.add.overlap(player1, endOfLevel, () => {
       eolOverlap.active = false;
 
       if (this.registry.get('level') === this.config.lastLevel) {

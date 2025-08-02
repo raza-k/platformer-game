@@ -10,7 +10,7 @@ import { getTimestamp } from '../utils/functions';
 import EventEmitter from '../events/Emitter';
 
 class Player extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y) {
+  constructor(scene, x, y, controls) {
     super(scene, x, y, 'player');
 
     scene.add.existing(this);
@@ -20,6 +20,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     Object.assign(this, collidable);
     Object.assign(this, anims);
 
+    this.controls = controls;
     this.init();
     this.initEvents();
   }
@@ -32,7 +33,8 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     this.hasBeenHit = false;
     this.isSliding = false;
     this.bounceVelocity = 250;
-    this.cursors = this.scene.input.keyboard.createCursorKeys();
+    // Use custom controls if provided, otherwise default to arrow keys
+    this.cursors = this.controls || this.scene.input.keyboard.createCursorKeys();
 
     this.jumpSound = this.scene.sound.add('jump', {volume: 0.2});
     this.projectileSound = this.scene.sound.add('projectile-launch', {volume: 0.2});
@@ -87,15 +89,21 @@ class Player extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    const { left, right, space } = this.cursors;
-    const isSpaceJustDown = Phaser.Input.Keyboard.JustDown(space);
+    const { left, right, space, up } = this.cursors;
+    // Support both 'space' (arrows) and 'up' (WASD) for jump
+    let isJumpJustDown = false;
+    if (space) {
+      isJumpJustDown = Phaser.Input.Keyboard.JustDown(space);
+    } else if (up) {
+      isJumpJustDown = Phaser.Input.Keyboard.JustDown(up);
+    }
     const onFloor = this.body.onFloor();
 
-    if (left.isDown) {
+    if (left && left.isDown) {
       this.lastDirection = Phaser.Physics.Arcade.FACING_LEFT;
       this.setVelocityX(-this.playerSpeed);
       this.setFlipX(true);
-    } else if (right.isDown) {
+    } else if (right && right.isDown) {
       this.lastDirection = Phaser.Physics.Arcade.FACING_RIGHT;
       this.setVelocityX(this.playerSpeed);
       this.setFlipX(false);
@@ -103,7 +111,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
       this.setVelocityX(0);
     }
 
-    if (isSpaceJustDown && (onFloor || this.jumpCount < this.consecutiveJumps)) {
+    if (isJumpJustDown && (onFloor || this.jumpCount < this.consecutiveJumps)) {
       this.jumpSound.play();
       this.setVelocityY(-this.playerSpeed * 2)
       this.jumpCount++;
